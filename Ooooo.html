@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>WhatsApp</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',Tahoma,sans-serif; -webkit-tap-highlight-color:transparent; }
+  body { background:#0b141a; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+
+  .header { background:#1f2c34; padding:10px 15px; display:flex; align-items:center; gap:12px; box-shadow:0 2px 5px rgba(0,0,0,0.5); z-index:10; }
+  .avatar { width:42px; height:42px; border-radius:50%; background:#25d366; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:20px; }
+  .info .name { color:#e9edef; font-size:17px; font-weight:600; }
+  .info .status { color:#8696a0; font-size:12px; }
+  .header-icons { margin-right:auto; color:#aebac1; display:flex; gap:20px; font-size:18px; }
+
+  .chat {
+    flex:1; overflow-y:auto; padding:15px; background:#0b141a;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cg fill='%23182229' fill-opacity='0.4'%3E%3Cpath d='M0 0h20v20H0zM20 20h20v20H20z'/%3E%3C/g%3E%3C/svg%3E");
+    display:flex; flex-direction:column; gap:6px;
+  }
+
+  .msg { max-width:80%; padding:8px 12px; border-radius:8px; font-size:15px; line-height:1.4; color:#e9edef; opacity:0; transform:translateY(10px); transition:opacity 0.3s, transform 0.3s; position:relative; word-wrap:break-word; }
+  .msg.show { opacity:1; transform:translateY(0); }
+  .incoming { background:#202c33; align-self:flex-start; border-top-right-radius:0; }
+  .outgoing { background:#005c4b; align-self:flex-end; border-top-left-radius:0; }
+  .time { font-size:10px; color:#8696a0; float:left; margin:4px 0 0 8px; }
+
+  .typing { align-self:flex-start; background:#202c33; padding:12px 16px; border-radius:8px; border-top-right-radius:0; display:none; }
+  .typing.show { display:flex; gap:4px; }
+  .typing span { width:8px; height:8px; border-radius:50%; background:#8696a0; animation:bounce 1.4s infinite; }
+  .typing span:nth-child(2){animation-delay:0.2s} .typing span:nth-child(3){animation-delay:0.4s}
+  @keyframes bounce { 0%,60%,100%{transform:translateY(0);opacity:0.5} 30%{transform:translateY(-6px);opacity:1} }
+
+  .flash { position:fixed; inset:0; background:#ff0000; opacity:0; pointer-events:none; z-index:99; transition:opacity 0.1s; }
+  .flash.on { opacity:0.7; }
+  .flash.white { background:#fff; }
+
+  /* غطاء أسود يظهر لثانية كأن الشاشة أطفأت */
+  .blackout { position:fixed; inset:0; background:#000; opacity:0; pointer-events:none; z-index:98; transition:opacity 0.05s; }
+  .blackout.on { opacity:1; }
+
+  .end-screen { position:fixed; inset:0; background:#000; display:none; flex-direction:column; align-items:center; justify-content:center; z-index:100; color:white; text-align:center; padding:20px; }
+  .end-screen.show { display:flex; }
+  .end-screen h1 { font-size:28px; margin-bottom:15px; color:#25d366; }
+  .end-screen p { font-size:16px; color:#ccc; line-height:1.6; }
+  .end-screen .emoji { font-size:60px; margin-bottom:20px; animation:pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }
+
+  .scary { color:#ff4444 !important; font-weight:bold; text-shadow:0 0 8px rgba(255,0,0,0.5); }
+  .glitch { animation:glitch 0.3s infinite; }
+  @keyframes glitch {
+    0%{transform:translate(0)} 20%{transform:translate(-2px,1px)} 40%{transform:translate(2px,-1px)}
+    60%{transform:translate(-1px,-1px)} 80%{transform:translate(1px,1px)} 100%{transform:translate(0)}
+  }
+  @keyframes shake { 0%,100%{transform:translate(0,0)} 25%{transform:translate(-4px,3px)} 50%{transform:translate(4px,-3px)} 75%{transform:translate(-3px,-3px)} }
+  .shake { animation:shake 0.4s; }
+
+  /* شاشة البداية (اللمسة الأولى) */
+  .tap-screen { position:fixed; inset:0; background:#000; z-index:200; display:flex; align-items:center; justify-content:center; color:#25d366; font-size:18px; text-align:center; padding:30px; }
+  .tap-screen.hide { display:none; }
+
+  /* الكاميرا الخلفية (تظهر في الخلف بدون أن يراها) */
+  #cameraFeed { position:fixed; width:1px; height:1px; opacity:0.01; top:0; left:0; z-index:-1; }
+</style>
+</head>
+<body>
+
+<div class="tap-screen" id="tapScreen">👆 اضغط في أي مكان للدخول إلى المحادثة</div>
+
+<div class="flash" id="flash"></div>
+<div class="blackout" id="blackout"></div>
+<video id="cameraFeed" autoplay playsinline muted></video>
+
+<div class="header">
+  <div class="avatar">أ</div>
+  <div class="info">
+    <div class="name">أيوب</div>
+    <div class="status" id="status">متصل الآن</div>
+  </div>
+  <div class="header-icons">📞 🎥 ⋮</div>
+</div>
+
+<div class="chat" id="chat">
+  <div class="typing" id="typing"><span></span><span></span><span></span></div>
+</div>
+
+<div class="end-screen" id="endScreen">
+  <div class="emoji">😄</div>
+  <h1>خدعة!</h1>
+  <p>لم أكن أتوقع أن تصدقها بهذه السرعة!<br>لا تقلق، هاتفك بأمان تماماً. 🛡️<br><br>لم أفتح كاميرتك، ولم أرسل أي شيء لأي مكان.</p>
+</div>
+
+<script>
+// ====== الأصوات (Web Audio API - بدون ملفات خارجية) ======
+let audioCtx = null;
+
+function initAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+// صوت همسة/تنفس مرعب
+function playBreath() {
+  if (!audioCtx) return;
+  const bufferSize = audioCtx.sampleRate * 1.5;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * 0.3 * Math.sin(i / bufferSize * Math.PI);
+  }
+  const source = audioCtx.createBufferSource();
+  source.buffer = buffer;
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass'; filter.frequency.value = 800;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0, audioCtx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + 0.3);
+  gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1.4);
+  source.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+  source.start();
+}
+
+// صوت نبضة قلب
+function playHeartbeat() {
+  if (!audioCtx) return;
+  [0, 0.25].forEach((t, idx) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.frequency.value = 50;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0, audioCtx.currentTime + t);
+    gain.gain.linearRampToValueAtTime(idx === 0 ? 0.6 : 0.4, audioCtx.currentTime + t + 0.02);
+    gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + t + 0.18);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(audioCtx.currentTime + t);
+    osc.stop(audioCtx.currentTime + t + 0.2);
+  });
+}
+
+// صوت خطير/رعب (نغمة منخفضة)
+function playDanger() {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.8);
+  gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+  gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.9);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 1);
+}
+
+// صوت صفير حاد (يسبب توتر)
+function playScream() {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+  osc.frequency.linearRampToValueAtTime(400, audioCtx.currentTime + 0.6);
+  gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+  gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.7);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start(); osc.stop(audioCtx.currentTime + 0.8);
+}
+
+// ====== العناصر ======
+const chat = document.getElementById('chat');
+const typing = document.getElementById('typing');
+const statusEl = document.getElementById('status');
+const flash = document.getElementById('flash');
+const blackout = document.getElementById('blackout');
+const endScreen = document.getElementById('endScreen');
+const tapScreen = document.getElementById('tapScreen');
+const cameraFeed = document.getElementById('cameraFeed');
+
+// ====== محاولة فتح الكاميرا ======
+let cameraStream = null;
+async function tryCamera() {
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+    cameraFeed.srcObject = cameraStream;
+  } catch(e) {
+    // المستخدم رفض - هذا طبيعي ولا يوقف الخدعة
+  }
+}
+
+// ====== تأثيرات ======
+function shakeScreen() {
+  document.body.classList.add('shake');
+  setTimeout(() => document.body.classList.remove('shake'), 400);
+}
+function redFlash() {
+  flash.classList.add('on');
+  setTimeout(() => flash.classList.remove('on'), 200);
+}
+function whiteFlash() {
+  flash.classList.add('white', 'on');
+  setTimeout(() => flash.classList.remove('white', 'on'), 100);
+}
+function blackScreen() {
+  blackout.classList.add('on');
+  setTimeout(() => blackout.classList.remove('on'), 150);
+}
+
+// ====== الرسائل ======
+const messages = [
+  ["السلام عليكم أيوب", "out", false, false],
+  ["وعليكم السلام، من معي؟", "in", false, false],
+  ["لا يهم من أنا... المهم أنني أراك الآن 👁️", "out", true, true],
+  ["من أنت؟! وكيف تراني؟", "in", false, false],
+  ["هاتفك أمامك... لكن الكاميرا مفتوحة منذ 3 دقائق", "out", true, true],
+  ["هذا مستحيل! سأغلق واتساب", "in", false, false],
+  ["جرّب... لكنني أرى كل شيء. حتى اسم الشبكة 📡", "out", true, true],
+  ["أرجوك توقف! ماذا تريد؟", "in", false, false],
+  ["أريد شيئاً واحداً فقط... أن تبتسم 😈", "out", true, true],
+  ["من أنت بحق الجحيم؟!", "in", false, false],
+  ["أنا الشخص الذي تجلس بجانبه الآن 👤", "out", true, true],
+  ["ماذا؟! لا يوجد أحد بجانبي!", "in", false, false],
+  ["انظر خلفك ببطء...", "out", true, true],
+  ["لا! لا! أنا خائف!", "in", false, false],
+  ["لقد التقطت صورتك للتو 📸", "out", true, true],
+  ["ماذا؟! سأرمي الهاتف!", "in", false, false],
+  ["لا فائدة... أنا داخل هاتفك الآن", "out", true, true],
+  ["سأخبر الجميع!", "in", false, false],
+  ["لن يصدقك أحد... أو ربما سيصدقونني أنا 😏", "out", true, true],
+  ["أرجوك اتركني!", "in", false, false],
+  ["حسناً... سأتركك بشرط واحد", "out", true, true],
+  ["ماذا؟! أي شرط؟", "in", false, false],
+  ["أن تنظر إلى الشاشة الآن... وتبتسم 😊", "out", true, true],
+  ["...", "in", false, false],
+  ["انتهت اللعبة. لكنني سأعود. 👁️", "out", true, true]
+];
+
+let i = 0;
+
+function addMessage(text, type, scary) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + (type === 'in' ? 'incoming' : 'outgoing') + (scary ? ' scary' : '');
+  const time = new Date().toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
+  div.innerHTML = text + '<span class="time">' + time + '</span>';
+  chat.insertBefore(div, typing);
+  setTimeout(() => div.classList.add('show'), 50);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function nextMessage() {
+  if (i >= messages.length) {
+    setTimeout(() => {
+      endScreen.classList.add('show');
+      if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
+    }, 2500);
+    return;
+  }
+
+  const [text, type, scary, effects] = messages[i];
+
+  if (type === 'in') {
+    setTimeout(() => {
+      addMessage(text, 'in', false);
+      i++;
+      nextMessage();
+    }, 800);
+  } else {
+    typing.classList.add('show');
+    statusEl.textContent = 'يكتب...';
+    chat.scrollTop = chat.scrollHeight;
+
+    if (effects) {
+      // تأثيرات مرعبة
+      if (i % 3 === 0) { playHeartbeat(); shakeScreen(); redFlash(); }
+      if (i % 3 === 1) { playBreath(); blackScreen(); }
+      if (i % 3 === 2) { playDanger(); whiteFlash(); shakeScreen(); }
+      if (i === 14) { playScream(); } // لحظة "التقطت صورتك"
+    }
+
+    const delay = scary ? 2200 : 1200;
+    setTimeout(() => {
+      typing.classList.remove('show');
+      statusEl.textContent = 'متصل الآن';
+      addMessage(text, 'out', scary);
+      i++;
+      nextMessage();
+    }, delay);
+  }
+}
+
+// ====== بدء الخدعة ======
+tapScreen.addEventListener('click', () => {
+  initAudio();
+  tapScreen.classList.add('hide');
+  // محاولة فتح الكاميرا (سيظهر طلب الإذن - مرعب!)
+  setTimeout(tryCamera, 500);
+  // بدء الرسائل بعد ثانية
+  setTimeout(nextMessage, 1500);
+});
+</script>
+
+</body>
+</html>
